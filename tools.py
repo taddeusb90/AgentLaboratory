@@ -349,7 +349,7 @@ import sys
 import traceback
 
 
-def execute_code(code_str, timeout=60, MAX_LEN=1000):
+def execute_code(code_str, timeout=3600, MAX_LEN=1000):
     #print(code_str)
 
     # prevent plotting errors
