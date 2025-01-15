@@ -611,6 +611,7 @@ def parse_arguments():
         help='Total number of paper-solver steps'
     )
 
+    parser.add_argument('--file-path', type=str, default=None)
 
     return parser.parse_args()
 
@@ -622,6 +623,8 @@ if __name__ == "__main__":
     human_mode = args.copilot_mode.lower() == "true"
     compile_pdf = args.compile_latex.lower() == "true"
     load_existing = args.load_existing.lower() == "true"
+    file_path = args.file_path
+
     try:
         num_papers_lit_review = int(args.num_papers_lit_review.lower())
     except Exception:
@@ -653,6 +656,13 @@ if __name__ == "__main__":
         research_topic = input("Please name an experiment idea for AgentLaboratory to perform: ")
     else:
         research_topic = args.research_topic
+
+    if file_path and "{FILE}" in research_topic:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            file_content = f.read()
+        # Replace the placeholder with the entire file text
+        research_topic = research_topic.replace("{FILE}", file_content)
+
 
     task_notes_LLM = [
         {"phases": ["plan formulation"],
