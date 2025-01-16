@@ -352,14 +352,14 @@ def execute_code(
     code_str,
     max_total_time=7200,   # Hard limit on total runtime (seconds)
     max_idle_time=60,      # If no CPU usage / no prints for this many secs, kill
-    max_stdout_len=2000    # max length of captured logs
+    max_stdout_len=2000
 ):
     """
     Execute code in a separate subprocess with:
-      1. absolute time limit (max_total_time)
-      2. idle time limit (max_idle_time) based on CPU usage
-      3. capture stdout (limited by max_stdout_len)
-      4. gracefully handle zombie processes or processes that vanish
+      1) absolute time limit (max_total_time)
+      2) idle time limit (max_idle_time) based on CPU usage
+      3) capture stdout (limited by max_stdout_len)
+      4) gracefully handle zombie processes or processes that vanish
     """
     import matplotlib
     matplotlib.use('Agg')  # Use a non-interactive backend
@@ -378,7 +378,6 @@ def execute_code(
     start_time = time.time()
     output_capture = io.StringIO()
 
-    # Launch the subprocess in text mode, capturing stdout
     process = subprocess.Popen(
         [sys.executable, temp_filename],
         stdout=subprocess.PIPE,
@@ -391,17 +390,20 @@ def execute_code(
     last_cpu_check_time = time.time()
     kill_reason = None
 
+    # For versions of psutil which do have STATUS_ZOMBIE:
+    # We'll prefer that, else fallback to the literal "zombie".
+    ZOMBIE_STRING = getattr(psutil, "STATUS_ZOMBIE", "zombie").lower()
+
     while True:
-        # 1) If the process ended, break
+        # 1) If the process ended, break the loop
         if process.poll() is not None:
             break
 
         # 2) Read any line from stdout
-        line = None
         try:
             line = process.stdout.readline()
         except Exception:
-            pass
+            line = None
 
         if line:
             output_capture.write(line)
@@ -411,29 +413,32 @@ def execute_code(
         if (time.time() - last_cpu_check_time) > 2.0:
             last_cpu_check_time = time.time()
 
-            # (a) Check if process is still considered "running" in psutil
+            # (a) If process is not running => presumably done or zombie
             if not proc_psutil.is_running():
-                # If it’s not running, possibly a zombie or gone; break
-                kill_reason = "Process ended or is zombie"
+                kill_reason = "Process ended or unknown state"
                 break
 
-            # (b) Check if status is zombie
+            # (b) Attempt to get the string status
             try:
-                if proc_psutil.status() == psutil.ZOMBIE:
-                    kill_reason = "Process is zombie"
-                    process.kill()
-                    break
+                # e.g. "running", "sleeping", "zombie", etc.
+                status_str = proc_psutil.status().lower()
             except psutil.Error:
-                # If we fail to get status, we treat it as an error
+                # If we can't retrieve status, assume it's gone
                 kill_reason = "Could not retrieve process status"
+                process.kill()
+                break
+
+            # If status is "zombie", kill it
+            if status_str == ZOMBIE_STRING:
+                kill_reason = "Process is zombie"
                 process.kill()
                 break
 
             # (c) Try CPU usage
             try:
                 cpu_usage = proc_psutil.cpu_percent(interval=0.1)
-            except (psutil.ZombieProcess, psutil.NoSuchProcess, psutil.AccessDenied):
-                kill_reason = "Process is zombie or gone (cpu_percent error)"
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                kill_reason = "Process is gone or cannot be accessed"
                 process.kill()
                 break
 
@@ -453,7 +458,7 @@ def execute_code(
             process.kill()
             break
 
-        time.sleep(0.05)
+        time.sleep(0.05)  # Short pause
 
     # 6) Drain leftover stdout
     if process.poll() is not None:
