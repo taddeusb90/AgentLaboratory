@@ -355,7 +355,7 @@ class LaboratoryWorkflow:
                 if self.verbose: print("#"*40, f"\nThe following is dialogue produced by the SW Engineer: {dialogue}", "\n", "#"*40)
             if "```SUBMIT_CODE" in resp:
                 final_code = extract_prompt(resp, "SUBMIT_CODE")
-                code_resp = execute_code(final_code, timeout=60)
+                code_resp = execute_code(final_code)
                 if self.verbose: print("!"*100, "\n", f"CODE RESPONSE: {code_resp}")
                 swe_feedback += f"\nCode Response: {code_resp}\n"
                 if "[CODE EXECUTION ERROR]" in code_resp:
@@ -389,7 +389,7 @@ class LaboratoryWorkflow:
             if "```python" in resp:
                 code = extract_prompt(resp, "python")
                 code = self.ml_engineer.dataset_code + "\n" + code
-                code_resp = execute_code(code, timeout=120)
+                code_resp = execute_code(code)
                 ml_command = f"Code produced by the ML agent:\n{code}"
                 ml_feedback += f"\nCode Response: {code_resp}\n"
                 if self.verbose: print("!"*100, "\n", f"CODE RESPONSE: {code_resp}")
