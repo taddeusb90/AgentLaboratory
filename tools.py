@@ -1,7 +1,3 @@
-#####################
-# tools.py
-#####################
-
 from utils import *
 
 import time
@@ -22,10 +18,6 @@ import traceback
 import concurrent.futures
 import psutil
 import subprocess
-
-###############################################################################
-#                             HFDataSearch Class                              #
-###############################################################################
 
 class HFDataSearch:
     def __init__(self, like_thr=3, dwn_thr=50) -> None:
@@ -192,10 +184,6 @@ class HFDataSearch:
             result_strs.append(res_str)
         return result_strs
 
-###############################################################################
-#                      SemanticScholarSearch Class                            #
-###############################################################################
-
 class SemanticScholarSearch:
     def __init__(self):
         self.sch_engine = SemanticScholar(retry=False)
@@ -233,10 +221,6 @@ class SemanticScholarSearch:
         NOTE: Not implemented in this example
         """
         pass
-
-###############################################################################
-#                            ArxivSearch Class                                #
-###############################################################################
 
 class ArxivSearch:
     def __init__(self):
@@ -336,17 +320,6 @@ class ArxivSearch:
         time.sleep(2.0)
         return pdf_text
 
-
-###############################################################################
-#                            execute_code Function                            #
-###############################################################################
-#
-#  - uses psutil to keep code running if it remains busy.
-#  - kills code if idle for too long or hits a hard time limit.
-#  - also gracefully handles "zombie" processes by catching exceptions
-#    or checking .is_running() / .status().
-#
-###############################################################################
 
 def execute_code(
     code_str,
