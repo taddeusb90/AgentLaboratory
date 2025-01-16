@@ -292,7 +292,7 @@ import sys
 import io
 import traceback
 
-def execute_code(code_str, timeout=180):
+def execute_code(code_str, timeout=600):
     if "load_dataset('pubmed" in code_str:
         return "pubmed Download took way too long. Program terminated"
 
@@ -349,7 +349,7 @@ import sys
 import traceback
 
 
-def execute_code(code_str, timeout=3600, MAX_LEN=1000):
+def execute_code(code_str, timeout=600, MAX_LEN=1000):
     #print(code_str)
 
     # prevent plotting errors
