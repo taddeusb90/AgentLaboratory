@@ -341,14 +341,16 @@ class ArxivSearch:
 #                            execute_code Function                            #
 ###############################################################################
 #
-#  This new approach lets truly busy code keep running if it's using CPU,
-#  but kills it if idle for too long, or if it hits a hard overall timeout.
+#  - uses psutil to keep code running if it remains busy.
+#  - kills code if idle for too long or hits a hard time limit.
+#  - also gracefully handles "zombie" processes by catching exceptions
+#    or checking .is_running() / .status().
 #
 ###############################################################################
 
 def execute_code(
-    code_str, 
-    max_total_time=1800,   # Hard limit on total run time (seconds)
+    code_str,
+    max_total_time=7200,   # Hard limit on total runtime (seconds)
     max_idle_time=60,      # If no CPU usage / no prints for this many secs, kill
     max_stdout_len=2000    # max length of captured logs
 ):
@@ -357,6 +359,7 @@ def execute_code(
       1. absolute time limit (max_total_time)
       2. idle time limit (max_idle_time) based on CPU usage
       3. capture stdout (limited by max_stdout_len)
+      4. gracefully handle zombie processes or processes that vanish
     """
     import matplotlib
     matplotlib.use('Agg')  # Use a non-interactive backend
@@ -368,12 +371,10 @@ def execute_code(
     if "exit(" in code_str:
         return "[CODE EXECUTION ERROR] The exit() command is not allowed; please remove it."
 
-    # Write the user's code to a temporary script:
     temp_filename = "temp_script.py"
     with open(temp_filename, "w", encoding="utf-8") as f:
         f.write(code_str)
 
-    # Start a subprocess to run that script
     start_time = time.time()
     output_capture = io.StringIO()
 
@@ -385,54 +386,76 @@ def execute_code(
         universal_newlines=True
     )
 
-    # We'll track CPU usage with psutil
     proc_psutil = psutil.Process(process.pid)
-
     last_output_time = time.time()
     last_cpu_check_time = time.time()
     kill_reason = None
 
     while True:
-        # If the process ended, break
+        # 1) If the process ended, break
         if process.poll() is not None:
             break
 
-        # Grab the next line if available
+        # 2) Read any line from stdout
         line = None
         try:
-            # If there's no line, readline() can block or return ''
             line = process.stdout.readline()
         except Exception:
             pass
 
-        # If we read some line
         if line:
             output_capture.write(line)
             last_output_time = time.time()
 
-        # Check CPU usage every 2 seconds
+        # 3) CPU usage check every 2 seconds
         if (time.time() - last_cpu_check_time) > 2.0:
             last_cpu_check_time = time.time()
-            cpu_usage = proc_psutil.cpu_percent(interval=0.1)
-            # If usage > ~1%, that means it's not idle
+
+            # (a) Check if process is still considered "running" in psutil
+            if not proc_psutil.is_running():
+                # If it’s not running, possibly a zombie or gone; break
+                kill_reason = "Process ended or is zombie"
+                break
+
+            # (b) Check if status is zombie
+            try:
+                if proc_psutil.status() == psutil.ZOMBIE:
+                    kill_reason = "Process is zombie"
+                    process.kill()
+                    break
+            except psutil.Error:
+                # If we fail to get status, we treat it as an error
+                kill_reason = "Could not retrieve process status"
+                process.kill()
+                break
+
+            # (c) Try CPU usage
+            try:
+                cpu_usage = proc_psutil.cpu_percent(interval=0.1)
+            except (psutil.ZombieProcess, psutil.NoSuchProcess, psutil.AccessDenied):
+                kill_reason = "Process is zombie or gone (cpu_percent error)"
+                process.kill()
+                break
+
+            # If usage > 1%, consider it active
             if cpu_usage > 1.0:
                 last_output_time = time.time()
 
-        # If we've been idle for too long
+        # 4) Idle check
         if (time.time() - last_output_time) > max_idle_time:
             kill_reason = f"Idle for {max_idle_time} seconds."
             process.kill()
             break
 
-        # If we've exceeded the total time
+        # 5) Total time check
         if (time.time() - start_time) > max_total_time:
             kill_reason = f"Exceeded total runtime of {max_total_time} seconds."
             process.kill()
             break
 
-        time.sleep(0.05)  # Small pause to reduce busy-wait CPU usage
+        time.sleep(0.05)
 
-    # Drain any leftover output
+    # 6) Drain leftover stdout
     if process.poll() is not None:
         leftover = process.stdout.read()
         if leftover:
@@ -441,14 +464,15 @@ def execute_code(
     process.stdout.close()
     process.wait()
 
-    # Remove temp file if desired
+    # 7) Remove temp file if desired
     if os.path.exists(temp_filename):
         os.remove(temp_filename)
 
+    # 8) Attach kill_reason to logs if any
     output = output_capture.getvalue()
     if kill_reason:
         output += f"\n[CODE EXECUTION STOPPED]: {kill_reason}\n"
 
-    # Truncate output if needed
     return output[:max_stdout_len]
+
 
