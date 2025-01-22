@@ -606,7 +606,7 @@ def parse_arguments():
     parser.add_argument(
         '--compile-latex',
         type=str,
-        default="True",
+        default="False",
         help='Compile latex into pdf during paper writing phase. Disable if you can not install pdflatex.'
     )
 
